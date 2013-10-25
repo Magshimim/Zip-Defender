@@ -46,7 +46,7 @@ int ZipHeader::getCompressedSize()
 	return compressedSize;
 }
 
-int readInt(FILE* file)
+int readInt(FILE* &file)
 {
 	char temp[5];
 	memset(temp, 0, 5);
@@ -55,7 +55,7 @@ int readInt(FILE* file)
 	return *(int*)temp;
 }
 
-short readShort(FILE* file)
+short readShort(FILE* &file)
 {
 	char temp[3];
 	memset(temp, 0, 3);
@@ -64,7 +64,7 @@ short readShort(FILE* file)
 	return *(short*)temp;
 }
 
-string readString(FILE* file, int length)
+string readString(FILE* &file, int length)
 {
 	if(length <= 0)
 		return "";
@@ -78,5 +78,25 @@ string readString(FILE* file, int length)
 	else
 		toRet = string(temp, length);
 	delete[] temp;
+	return toRet;
+}
+
+vector<ZipHeader> ZipHeader::getAllHeaders(FILE* &file)
+{
+	int bytesRead = 0;
+	fseek(file, 0L, SEEK_END);
+	int totalBytes = ftell(file);
+	printf("total: %d\n", totalBytes);
+	rewind(file);
+	vector<ZipHeader> toRet;
+	while(!feof(file))
+	{
+		ZipHeader header(file);
+		bytesRead += sizeof(header) + header.getCompressedSize();
+		if(bytesRead > totalBytes)
+			break;
+		toRet.push_back(header);
+		fseek(file, header.getCompressedSize(), SEEK_CUR);
+	}
 	return toRet;
 }
