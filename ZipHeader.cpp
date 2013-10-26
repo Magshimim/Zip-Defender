@@ -11,13 +11,44 @@ ZipHeader::ZipHeader(FILE* &file)
 	crc32 = readInt(file);
 	compressedSize = readInt(file);
 	uncompressedSize = readInt(file);
-	double ratio = (double)uncompressedSize / compressedSize;
 
 	nameLength = readShort(file);
 	extraLength = readShort(file);
 
 	fileName = readString(file, nameLength);
 	extraField = readString(file, extraLength);
+	dataOffset = ftell(file);
+}
+
+ZipHeader::ZipHeader(char* &buffer, int maxSize, int startOffset)
+{
+	char* temp = buffer + startOffset;
+	maxSize -= startOffset;
+	if(maxSize < 30)
+	{
+		reportError();
+		return;
+	}
+	signature = readInt(temp); 
+	versionNeeded = readShort(temp);
+	bitFlag = readShort(temp);
+	compressionMethod = readShort(temp);
+	lastModifiedTime = readShort(temp);
+	lastModifiedDate = readShort(temp);
+	crc32 = readInt(temp);
+	compressedSize = readInt(temp);
+	uncompressedSize = readInt(temp);
+
+	nameLength = readShort(temp);
+	extraLength = readShort(temp);;
+	if(maxSize < 30 + nameLength - extraLength)
+	{
+		reportError();
+		return;
+	}
+	fileName = readString(temp, nameLength);
+	extraField = readString(temp, extraLength);
+	dataOffset = (int) (temp-buffer);
 }
 
 void ZipHeader::print()
@@ -38,12 +69,90 @@ void ZipHeader::print()
 	printf("extra length: %d\n", extraLength);
 
 	cout << "file name: " << fileName << endl;
-	//cout << "extra field: " << extraField << endl;
+	cout << "extra field: " << extraField << endl;
+	cout << "data offset: " << dataOffset << endl;
 }
 
 int ZipHeader::getCompressedSize()
 {
 	return compressedSize;
+}
+
+int ZipHeader::getUncompressedSize()
+{
+	return uncompressedSize;
+}
+
+int ZipHeader::getOffset()
+{
+	return dataOffset;
+}
+
+int ZipHeader::getHeaderFullSize()
+{
+	return 30+extraLength+nameLength+compressedSize;
+}
+
+string ZipHeader::getFileName()
+{
+	return fileName;
+}
+
+void ZipHeader::reportError()
+{
+	signature = -1;
+	versionNeeded = -1;
+	bitFlag = -1;
+	compressionMethod = -1;
+	lastModifiedTime = -1;
+	lastModifiedDate = -1;
+	crc32 = -1;
+	compressedSize = -1;
+	uncompressedSize = -1;
+
+	nameLength = -1;
+	extraLength = -1;
+}
+
+bool ZipHeader::hasError()
+{
+	return signature == -1 && versionNeeded == -1 && bitFlag == -1 && compressionMethod == -1 && lastModifiedTime == -1 && lastModifiedDate == -1 
+			&& crc32 == -1 && compressedSize == -1 && uncompressedSize == -1 && nameLength == -1 && extraLength == -1;
+}
+
+vector<ZipHeader> ZipHeader::getAllHeaders(FILE* &file)
+{
+	int bytesRead = 0;
+	fseek(file, 0L, SEEK_END);
+	int totalBytes = ftell(file);
+	rewind(file);
+	vector<ZipHeader> toRet;
+	while(!feof(file))
+	{
+		ZipHeader header(file);
+		bytesRead += sizeof(header) + header.getCompressedSize();
+		if(bytesRead > totalBytes)
+			break;
+		toRet.push_back(header);
+		fseek(file, header.getCompressedSize(), SEEK_CUR);
+	}
+	return toRet;
+}
+
+vector<ZipHeader> ZipHeader::getAllHeaders(char* &buffer, int bufferSize)
+{
+	int offset = 0;
+	vector<ZipHeader> toRet;
+	while(offset < bufferSize)
+	{
+		ZipHeader header(buffer, bufferSize, offset);
+		offset += header.getHeaderFullSize();
+		if(offset < bufferSize)
+		{
+			toRet.push_back(header);
+		}
+	}
+	return toRet;
 }
 
 int readInt(FILE* &file)
@@ -81,22 +190,25 @@ string readString(FILE* &file, int length)
 	return toRet;
 }
 
-vector<ZipHeader> ZipHeader::getAllHeaders(FILE* &file)
+int readInt(char* &buffer)
 {
-	int bytesRead = 0;
-	fseek(file, 0L, SEEK_END);
-	int totalBytes = ftell(file);
-	printf("total: %d\n", totalBytes);
-	rewind(file);
-	vector<ZipHeader> toRet;
-	while(!feof(file))
-	{
-		ZipHeader header(file);
-		bytesRead += sizeof(header) + header.getCompressedSize();
-		if(bytesRead > totalBytes)
-			break;
-		toRet.push_back(header);
-		fseek(file, header.getCompressedSize(), SEEK_CUR);
-	}
+	int toRet = *(int*)buffer;
+	buffer += 4;
+	return toRet;
+}
+
+short readShort(char* &buffer)
+{
+	short toRet = *(short*)buffer;
+	buffer += 2;
+	return toRet;
+}
+
+string readString(char* &buffer, int length)
+{
+	if(length <= 0)
+		return "";
+	string toRet(buffer, length);
+	buffer += length;
 	return toRet;
 }
